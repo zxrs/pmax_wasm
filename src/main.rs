@@ -105,9 +105,9 @@ fn decode(input: Vec<u8>, delete_exif: bool) -> Result<Decoded> {
 fn encode(decoded: Decoded, quality: f32) -> Result<Vec<u8>> {
     let mut buf = vec![];
     let mut comp = Compress::new(ColorSpace::JCS_RGB);
+    comp.set_scan_optimization_mode(ScanMode::AllComponentsTogether);
     comp.set_quality(quality);
     comp.set_size(decoded.width, decoded.height);
-    comp.set_scan_optimization_mode(ScanMode::AllComponentsTogether);
     let mut comp = comp.start_compress(&mut buf)?;
 
     if let Some(markers) = decoded.markers {
@@ -140,7 +140,7 @@ fn resize(decoded: Decoded, size: Option<u32>) -> Result<Decoded> {
         .context("no image.")?;
     let img = DynamicImage::ImageRgb8(img);
     let img = img.resize(size, size, Lanczos3);
-    let img = if let Some(orientation) = decoded.orientation {
+    let img = if let (Some(orientation), None) = (decoded.orientation, decoded.markers.as_ref()) {
         match orientation {
             Orientation::R90 => img.rotate90(),
             Orientation::R180 => img.rotate180(),
