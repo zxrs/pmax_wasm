@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
+use exif::{In, Reader, Tag};
 use image::{imageops::Lanczos3, DynamicImage, RgbImage};
 use mozjpeg::{ColorSpace, Compress, Decompress, Marker, ScanMode, ALL_MARKERS};
 use std::env;
 use std::fs;
+use std::io::{BufReader, Cursor};
 
 fn main() -> Result<()> {
     let input = fs::read("/input")?;
@@ -36,14 +38,37 @@ fn generate(
     Ok(encoded)
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Orientation {
+    None,
+    R90,
+    R180,
+    R270,
+}
+
 struct Decoded {
     data: Vec<u8>,
     width: usize,
     height: usize,
+    orientation: Option<Orientation>,
     markers: Option<Vec<(Marker, Vec<u8>)>>,
 }
 
 fn decode(input: Vec<u8>, delete_exif: bool) -> Result<Decoded> {
+    let orientation = {
+        let reader = Reader::new();
+        let mut buf = BufReader::new(Cursor::new(&input));
+        reader.read_from_container(&mut buf).ok().and_then(|e| {
+            e.get_field(Tag::Orientation, In::PRIMARY)
+                .map(|f| match f.value.get_uint(0) {
+                    Some(3) => Orientation::R180,
+                    Some(6) => Orientation::R90,
+                    Some(8) => Orientation::R270,
+                    _ => Orientation::None,
+                })
+        })
+    };
+
     let decomp = Decompress::builder()
         .with_markers(ALL_MARKERS)
         .from_mem(&input)?;
@@ -72,6 +97,7 @@ fn decode(input: Vec<u8>, delete_exif: bool) -> Result<Decoded> {
         data,
         width,
         height,
+        orientation,
         markers,
     })
 }
@@ -114,6 +140,16 @@ fn resize(decoded: Decoded, size: Option<u32>) -> Result<Decoded> {
         .context("no image.")?;
     let img = DynamicImage::ImageRgb8(img);
     let img = img.resize(size, size, Lanczos3);
+    let img = if let Some(orientation) = decoded.orientation {
+        match orientation {
+            Orientation::R90 => img.rotate90(),
+            Orientation::R180 => img.rotate180(),
+            Orientation::R270 => img.rotate270(),
+            _ => img,
+        }
+    } else {
+        img
+    };
     let width = img.width() as _;
     let height = img.height() as _;
     Ok(Decoded {

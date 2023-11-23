@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+kamadak-exif = "0.5.5"
 mozjpeg = "0.10"
 
 [dependencies.image]
